@@ -1,0 +1,87 @@
+{
+  "id": "employee-onboarding",
+  "version": 1,
+  "description": "Employee onboarding: eligibility rules, ID verification, conditional background check",
+  "maxResumes": 2,
+  "schema": {
+    "additionalProperties": false,
+    "fields": {
+      "fullName": { "type": "string", "required": true, "minLength": 2 },
+      "email": { "type": "string", "required": true, "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
+      "role": { "type": "string", "required": true, "enum": ["engineer", "senior-engineer", "designer", "finance-analyst"] },
+      "country": { "type": "string", "required": true, "minLength": 2, "maxLength": 2 },
+      "startDate": { "type": "string", "required": true, "format": "date" },
+      "yearsExperience": { "type": "number", "required": true, "min": 0, "max": 60 },
+      "hasWorkPermit": { "type": "boolean" },
+      "idDocument": { "type": "string", "required": true, "minLength": 3 }
+    }
+  },
+  "stages": [
+    {
+      "id": "eligibility",
+      "type": "rules",
+      "rules": [
+        {
+          "id": "work-permit-required",
+          "description": "Non-domestic hires need a work permit",
+          "when": { "field": "country", "op": "neq", "value": "IN" },
+          "check": { "field": "hasWorkPermit", "op": "eq", "value": true },
+          "onFail": "REJECT",
+          "message": "Foreign hire without a work permit"
+        },
+        {
+          "id": "senior-experience-floor",
+          "description": "Senior engineers need at least 2 years",
+          "when": { "field": "role", "op": "eq", "value": "senior-engineer" },
+          "check": { "field": "yearsExperience", "op": "gte", "value": 2 },
+          "onFail": "REJECT",
+          "message": "Senior role requires at least 2 years of experience"
+        },
+        {
+          "id": "senior-experience-target",
+          "description": "Senior engineers below 5 years need manager sign-off",
+          "when": { "field": "role", "op": "eq", "value": "senior-engineer" },
+          "check": { "field": "yearsExperience", "op": "gte", "value": 5 },
+          "onFail": "MANUAL_REVIEW",
+          "message": "Senior role below 5 years needs hiring-manager review"
+        },
+        {
+          "id": "restricted-region",
+          "description": "Restricted regions need compliance review",
+          "check": { "field": "country", "op": "nin", "value": ["KP", "IR"] },
+          "onFail": "MANUAL_REVIEW",
+          "message": "Restricted region requires compliance review"
+        }
+      ]
+    },
+    {
+      "id": "document-verification",
+      "type": "dependency",
+      "service": "documentVerification",
+      "request": { "documentId": "$.idDocument", "fullName": "$.fullName" },
+      "timeoutMs": 500,
+      "retry": { "maxAttempts": 3, "backoffMs": 20 },
+      "outcomes": [
+        { "when": { "field": "status", "op": "eq", "value": "VERIFIED" }, "action": "CONTINUE" },
+        { "when": { "field": "status", "op": "eq", "value": "MISMATCH" }, "action": "REJECT", "reason": "ID document does not match employee identity" }
+      ],
+      "defaultAction": "MANUAL_REVIEW",
+      "onExhausted": "RETRY_PENDING"
+    },
+    {
+      "id": "background-check",
+      "type": "dependency",
+      "when": { "field": "role", "op": "in", "value": ["senior-engineer", "finance-analyst"] },
+      "service": "backgroundCheck",
+      "request": { "documentId": "$.idDocument", "fullName": "$.fullName" },
+      "timeoutMs": 500,
+      "retry": { "maxAttempts": 3, "backoffMs": 20 },
+      "outcomes": [
+        { "when": { "field": "status", "op": "eq", "value": "CLEAR" }, "action": "CONTINUE" },
+        { "when": { "field": "status", "op": "eq", "value": "FLAGGED" }, "action": "MANUAL_REVIEW", "reason": "Background check flagged an adverse record" }
+      ],
+      "defaultAction": "MANUAL_REVIEW",
+      "onExhausted": "RETRY_PENDING"
+    }
+  ]
+}

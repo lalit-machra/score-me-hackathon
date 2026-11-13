@@ -1,0 +1,13 @@
+{
+  "name": "workflow-decision-engine",
+  "version": "1.0.0",
+  "description": "Configurable workflow decision platform (rules, stages, audit, idempotency, retries)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "examples": "node scripts/gen-examples.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
